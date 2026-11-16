@@ -1,0 +1,41 @@
+name: wonit-ai
+
+x-worker-env: &worker-env
+  QUEUE_MODE: sqs
+  AWS_REGION: "${AWS_REGION:-ap-northeast-2}"
+  BACKEND_API_URL: "${BACKEND_API_URL:?Set BACKEND_API_URL}"
+  BACKEND_API_TOKEN: "${BACKEND_API_TOKEN:?Set BACKEND_API_TOKEN}"
+
+services:
+  chatbot:
+    image: "${CHATBOT_IMAGE:?Set CHATBOT_IMAGE}"
+    restart: unless-stopped
+    scale: ${CHATBOT_REPLICAS:-2}
+    environment:
+      <<: *worker-env
+      WORKER_KIND: chatbot
+      SQS_QUEUE_URL: "${CHATBOT_QUEUE_URL:?Set CHATBOT_QUEUE_URL}"
+
+  report:
+    image: "${REPORT_IMAGE:?Set REPORT_IMAGE}"
+    restart: unless-stopped
+    environment:
+      <<: *worker-env
+      WORKER_KIND: report
+      SQS_QUEUE_URL: "${REPORT_QUEUE_URL:?Set REPORT_QUEUE_URL}"
+
+  inspection:
+    image: "${INSPECTION_IMAGE:?Set INSPECTION_IMAGE}"
+    restart: unless-stopped
+    environment:
+      <<: *worker-env
+      WORKER_KIND: inspection
+      SQS_QUEUE_URL: "${INSPECTION_QUEUE_URL:?Set INSPECTION_QUEUE_URL}"
+
+  monitoring:
+    image: "${MONITORING_IMAGE:?Set MONITORING_IMAGE}"
+    restart: unless-stopped
+    environment:
+      <<: *worker-env
+      WORKER_KIND: monitoring
+      SQS_QUEUE_URL: "${MONITORING_QUEUE_URL:?Set MONITORING_QUEUE_URL}"

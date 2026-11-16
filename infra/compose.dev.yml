@@ -1,0 +1,100 @@
+name: wonit-dev
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://wonit:wonit@db:5432/wonit
+  JWT_SECRET: wonit-development-jwt-secret-not-for-production
+  BACKEND_API_TOKEN: wonit-development-worker-token-not-for-production
+  DEV_MODE: "true"
+  QUEUE_MODE: database
+
+x-backend: &backend
+  image: wonit-backend:dev
+  build:
+    context: ..
+    dockerfile: backend/Dockerfile
+  environment: *backend-env
+
+x-worker-env: &worker-env
+  QUEUE_MODE: database
+  BACKEND_API_URL: http://backend:8000
+  BACKEND_API_TOKEN: wonit-development-worker-token-not-for-production
+
+x-worker: &worker
+  image: wonit-ai:dev
+  build:
+    context: ..
+    dockerfile: ai-service/Dockerfile
+  depends_on:
+    backend:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: wonit
+      POSTGRES_USER: wonit
+      POSTGRES_PASSWORD: wonit
+    volumes:
+      - development-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "wonit", "-d", "wonit"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 3s
+      timeout: 4s
+      retries: 15
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  chatbot:
+    <<: *worker
+    scale: 2
+    environment:
+      <<: *worker-env
+      WORKER_KIND: chatbot
+
+  report:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_KIND: report
+
+  inspection:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_KIND: inspection
+
+  monitoring:
+    <<: *worker
+    environment:
+      <<: *worker-env
+      WORKER_KIND: monitoring
+
+volumes:
+  development-db:
